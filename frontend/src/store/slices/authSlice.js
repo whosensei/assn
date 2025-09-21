@@ -59,18 +59,44 @@ export const loadUser = createAsyncThunk(
   }
 );
 
+export const deductMessageCredit = createAsyncThunk(
+  'auth/deductMessageCredit',
+  async (_, { rejectWithValue }) => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        return rejectWithValue('No token found');
+      }
+
+      const response = await axios.post('/api/users/deduct-message-credit', {}, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      return response.data;
+    } catch (error) {
+      return rejectWithValue(error.response.data.message || 'Failed to deduct credit');
+    }
+  }
+);
+
 const authSlice = createSlice({
   name: 'auth',
   initialState: {
     user: null,
     token: localStorage.getItem('token'),
-    isLoading: false,
+    isLoading: !!localStorage.getItem('token'), // Set loading to true if token exists
     isAuthenticated: false,
     error: null,
   },
   reducers: {
     logout: (state) => {
       localStorage.removeItem('token');
+      // Ensure no lingering auth headers on axios
+      if (axios && axios.defaults && axios.defaults.headers && axios.defaults.headers.common) {
+        delete axios.defaults.headers.common.Authorization;
+      }
       state.user = null;
       state.token = null;
       state.isAuthenticated = false;
@@ -126,8 +152,11 @@ const authSlice = createSlice({
       })
       .addCase(loadUser.fulfilled, (state, action) => {
         state.isLoading = false;
-        state.isAuthenticated = true;
-        state.user = action.payload;
+        // If there's no token anymore (e.g., user logged out while request was in flight),
+        // do NOT mark the user as authenticated or set user data.
+        const hasToken = !!localStorage.getItem('token');
+        state.isAuthenticated = hasToken;
+        state.user = hasToken ? action.payload : null;
         state.error = null;
       })
       .addCase(loadUser.rejected, (state, action) => {
@@ -135,6 +164,15 @@ const authSlice = createSlice({
         state.isAuthenticated = false;
         state.token = null;
         state.user = null;
+        state.error = action.payload;
+      })
+      // Credit deduction cases
+      .addCase(deductMessageCredit.fulfilled, (state, action) => {
+        if (state.user) {
+          state.user.credits = action.payload.credits;
+        }
+      })
+      .addCase(deductMessageCredit.rejected, (state, action) => {
         state.error = action.payload;
       });
   },

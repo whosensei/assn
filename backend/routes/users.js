@@ -24,6 +24,36 @@ router.get('/profile', auth, async (req, res) => {
   }
 });
 
+// Deduct credits for sending a message
+router.post('/deduct-message-credit', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Check if user has enough credits
+    if (user.credits < 1) {
+      return res.status(400).json({ 
+        message: 'Insufficient credits',
+        credits: user.credits 
+      });
+    }
+
+    // Deduct 1 credit for the message
+    user.credits -= 1;
+    await user.save();
+
+    res.json({
+      credits: user.credits,
+      message: 'Credit deducted successfully'
+    });
+  } catch (error) {
+    console.error('Credit deduction error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // Update user credits
 router.patch('/credits', auth, async (req, res) => {
   try {

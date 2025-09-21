@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { logout } from '../store/slices/authSlice';
+import { useNavigate } from 'react-router-dom';
+import { logout, deductMessageCredit } from '../store/slices/authSlice';
 import { 
   setActiveConversation, 
   addMessage, 
@@ -16,6 +17,7 @@ import './Chat.css';
 
 const Chat = () => {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
   const [message, setMessage] = useState('');
   const [showUserMenu, setShowUserMenu] = useState(false);
   const messagesEndRef = useRef(null);
@@ -35,15 +37,29 @@ const Chat = () => {
     scrollToBottom();
   }, [activeConversation?.messages]);
 
-  const handleSendMessage = (e) => {
+  const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!message.trim()) return;
+
+    // Check if user has enough credits
+    if (user?.credits < 1) {
+      alert('Insufficient credits to send message');
+      return;
+    }
 
     const timestamp = new Date().toLocaleTimeString('en-US', {
       hour: 'numeric',
       minute: '2-digit',
       hour12: true
     });
+
+    // Deduct credit first
+    try {
+      await dispatch(deductMessageCredit()).unwrap();
+    } catch (error) {
+      alert('Failed to deduct credit: ' + error);
+      return;
+    }
 
     // Add user message
     dispatch(addMessage({
@@ -75,6 +91,7 @@ const Chat = () => {
   const handleLogout = () => {
     dispatch(logout());
     setShowUserMenu(false);
+    navigate('/signin'); // Force navigation to signin page
   };
 
   const handleNewChat = () => {
@@ -163,7 +180,10 @@ const Chat = () => {
           
           <div className="chat-header-actions">
             {/* Credits */}
-            <div className="credits-display">
+            <div className={`credits-display ${
+              user?.credits <= 0 ? 'no-credits' : 
+              user?.credits <= 10 ? 'low-credits' : ''
+            }`}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                 <circle cx="12" cy="12" r="10"/>
                 <path d="M12 6v6l4 2"/>
@@ -255,7 +275,10 @@ const Chat = () => {
                     </svg>
                     Settings
                   </button>
-                  <button className="user-menu-item" onClick={handleLogout}>
+                  <button 
+                    className="user-menu-item" 
+                    onClick={handleLogout}
+                  >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                       <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
                       <polyline points="16,17 21,12 16,7"/>
@@ -341,7 +364,12 @@ const Chat = () => {
               value={message}
               onChange={(e) => setMessage(e.target.value)}
             />
-            <button type="submit" className="send-button" disabled={!message.trim()}>
+            <button 
+              type="submit" 
+              className="send-button" 
+              disabled={!message.trim() || user?.credits < 1}
+              title={user?.credits < 1 ? 'Insufficient credits' : ''}
+            >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                 <line x1="22" y1="2" x2="11" y2="13"/>
                 <polygon points="22,2 15,22 11,13 2,9 22,2"/>
@@ -349,7 +377,13 @@ const Chat = () => {
             </button>
           </form>
           <p className="input-footer">
-            Press Enter to send, Shift+Enter for new line
+            {user?.credits < 1 ? (
+              <span style={{color: '#dc2626'}}>No credits remaining - Cannot send messages</span>
+            ) : user?.credits <= 10 ? (
+              <span style={{color: '#f59e0b'}}>Low credits ({user.credits} remaining)</span>
+            ) : (
+              'Press Enter to send, Shift+Enter for new line'
+            )}
           </p>
           <div className="character-count">0/2000</div>
         </div>
